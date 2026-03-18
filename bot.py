@@ -298,7 +298,8 @@ class TelegramNSFWBot:
             'enable_name_check': True,
             'warning_limit': 3,
             'penalty_type': 'ban',  # 'ban', 'kick', 'mute', 'warn'
-            'who_can_use': 'admin'  # 'admin', 'member', 'everyone'
+            'who_can_use': 'admin',  # 'admin', 'member', 'everyone'
+            'who_to_monitor': 'everyone'  # 'admin', 'member', 'member_admin', 'everyone'
         }
         
         # Custom blocked words per chat
@@ -789,8 +790,85 @@ Add me to your group and make me an admin to automatically monitor new members!
         except BadRequest as e:
             logger.error(f"Failed to show access control submenu: {e}")
     
+    async def show_monitor_users_submenu(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show monitor users submenu with dedicated buttons"""
+        query = update.callback_query
+        await query.answer()
+        
+        chat_id = query.message.chat_id
+        settings = self.chat_settings.get(chat_id, self.default_settings)
+        current_monitor = settings['who_to_monitor']
+        
+        monitor_emoji = {
+            'admin': '👮',
+            'member': '👥',
+            'member_admin': '👥 + 👮',
+            'everyone': '🌍'
+        }
+        
+        monitor_desc = {
+            'admin': 'Only administrators and group owner will be monitored for NSFW content',
+            'member': 'Only regular members will be monitored (admins exempt from checks)',
+            'member_admin': 'Both members and admins will be monitored for NSFW content',
+            'everyone': 'All users including group owner will be monitored'
+        }
+        
+        submenu_msg = (
+            f"**👁️ Monitor Users Settings**\n\n"
+            f"**Current Setting:** {monitor_emoji[current_monitor]} {current_monitor.replace('_', ' + ').title()}\n\n"
+            f"{monitor_desc[current_monitor]}\n\n"
+            f"**Select who should be monitored:**"
+        )
+        
+        # Create keyboard with radio-button style selection
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    f"{'✅ ' if current_monitor == 'admin' else ''}👮 Admins Only",
+                    callback_data="set_monitor_admin"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    f"{'✅ ' if current_monitor == 'member' else ''}👥 Members Only",
+                    callback_data="set_monitor_member"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    f"{'✅ ' if current_monitor == 'member_admin' else ''}👥 Members + 👮 Admins",
+                    callback_data="set_monitor_member_admin"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    f"{'✅ ' if current_monitor == 'everyone' else ''}🌍 Everyone",
+                    callback_data="set_monitor_everyone"
+                )
+            ],
+            [
+                InlineKeyboardButton("« Back to Settings", callback_data="back_to_settings")
+            ]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        try:
+            await query.edit_message_text(
+                submenu_msg,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+        except BadRequest as e:
+            logger.error(f"Failed to show monitor users submenu: {e}")
+    
     async def analyze_new_member(self, user: User, chat: Chat):
         """Analyze a new group member"""
+        # Check if user should be monitored based on settings
+        if not await self.should_monitor_user(user, chat.id):
+            logger.info(f"Skipping monitoring for user {user.id} (status: {user.status}) based on settings")
+            return
+        
         is_violation, categories, severity, words = await self.check_member_profile(user, chat.id)
         
         if is_violation:
@@ -798,6 +876,11 @@ Add me to your group and make me an admin to automatically monitor new members!
     
     async def analyze_user(self, user: User, chat: Chat, message: Message = None, is_promotion: bool = False):
         """Analyze a user's profile"""
+        # Check if user should be monitored based on settings
+        if not await self.should_monitor_user(user, chat.id):
+            logger.info(f"Skipping analysis for user {user.id} (status: {user.status}) based on settings")
+            return
+        
         is_violation, categories, severity, words = await self.check_member_profile(user, chat.id)
         
         if is_violation:
@@ -805,6 +888,36 @@ Add me to your group and make me an admin to automatically monitor new members!
                 await self.send_violation_report(chat, user, categories, severity, words)
             else:
                 await self.handle_violation(chat, user, categories, severity, words)
+    
+    async def should_monitor_user(self, user: User, chat_id: int) -> bool:
+        """Check if user should be monitored based on their status and settings"""
+        try:
+            # Get chat member status
+            member = await self.application.bot.get_chat_member(chat_id, user.id)
+            user_status = member.status
+            
+            # Get monitoring setting
+            settings = self.chat_settings.get(chat_id, self.default_settings)
+            monitor_setting = settings['who_to_monitor']
+            
+            # Determine if should monitor based on setting
+            if monitor_setting == 'admin':
+                # Only monitor admins
+                return user_status in [ChatMember.ADMINISTRATOR, ChatMember.OWNER]
+            elif monitor_setting == 'member':
+                # Only monitor members (not admins)
+                return user_status == ChatMember.MEMBER
+            elif monitor_setting == 'member_admin':
+                # Monitor both members and admins
+                return user_status in [ChatMember.MEMBER, ChatMember.ADMINISTRATOR, ChatMember.OWNER]
+            elif monitor_setting == 'everyone':
+                # Monitor everyone (default)
+                return True
+            
+            return True  # Default to monitoring everyone
+        except Exception as e:
+            logger.error(f"Error checking if should monitor user: {e}")
+            return True  # Default to monitoring on error
     
     async def check_member_profile(self, user: User, chat_id: int) -> Tuple[bool, List[str], str, List[str]]:
         """Check a member's full name and username for NSFW content"""
@@ -1432,6 +1545,35 @@ Add me to your group and make me an admin to automatically monitor new members!
         elif data == "noop":
             # Do nothing button (placeholder)
             pass
+        
+        elif data == "change_monitor":
+            # Show monitor users submenu
+            await self.show_monitor_users_submenu(update, context)
+        
+        elif data in ["set_monitor_admin", "set_monitor_member", "set_monitor_member_admin", "set_monitor_everyone"]:
+            # Handle monitor users selection
+            monitor_map = {
+                'set_monitor_admin': 'admin',
+                'set_monitor_member': 'member',
+                'set_monitor_member_admin': 'member_admin',
+                'set_monitor_everyone': 'everyone'
+            }
+            
+            new_monitor = monitor_map[data]
+            settings['who_to_monitor'] = new_monitor
+            
+            monitor_descriptions = {
+                'admin': '👮 Monitoring Admins Only\nOnly administrators will be checked for NSFW content',
+                'member': '👥 Monitoring Members Only\nOnly regular members will be checked (not admins)',
+                'member_admin': '👥 + 👮 Monitoring Members + Admins\nBoth members and admins will be checked',
+                'everyone': '🌍 Monitoring Everyone\nAll users including owner will be checked'
+            }
+            
+            await query.edit_message_text(
+                f"✅ Monitor setting changed:\n{monitor_descriptions[new_monitor]}"
+            )
+            await asyncio.sleep(2)
+            await self.settings_command_for_callback(update, context)
     
     async def handle_admin_action_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle unban/unmute button clicks by admins"""
@@ -1493,6 +1635,8 @@ Add me to your group and make me an admin to automatically monitor new members!
             f"• Penalty Type: {settings['penalty_type'].upper()}\n\n"
             f"**Access Control:**\n"
             f"• Who Can Use Bot: {settings['who_can_use'].capitalize()}\n\n"
+            f"**Monitoring:**\n"
+            f"• Monitor Users: {settings['who_to_monitor'].replace('_', ' + ').title()}\n\n"
             "Use the buttons below to customize settings."
         )
         
@@ -1524,6 +1668,9 @@ Add me to your group and make me an admin to automatically monitor new members!
             ],
             [
                 InlineKeyboardButton("👥 Access Control", callback_data="change_access"),
+            ],
+            [
+                InlineKeyboardButton("👁️ Monitor Users", callback_data="change_monitor"),
             ],
         ]
         
