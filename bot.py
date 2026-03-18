@@ -307,8 +307,14 @@ class TelegramNSFWBot:
         # Custom penalty for blocked words per chat
         self.blocked_words_penalty: Dict[int, str] = {}  # chat_id -> penalty_type
         
-        # Initialize application
+        # Log channel configuration
+        self.log_channel_id = -1003757375746  # @music_24345
+        
+        # Initialize application with error handlers
         self.application = Application.builder().token(token).build()
+        
+        # Register error handlers
+        self.application.add_error_handler(self.on_error)
         
         # Register handlers
         self._register_handlers()
@@ -1527,7 +1533,54 @@ Add me to your group and make me an admin to automatically monitor new members!
     def run(self):
         """Start the bot"""
         logger.info("Starting NSFW Detection Bot...")
+        # Send startup notification to log channel
+        asyncio.get_event_loop().run_until_complete(
+            self.send_log_message(
+                "🟢 **Bot Started**\n\n"
+                f"**Time:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                "**Status:** Online and ready!\n"
+                "**Version:** v2.0 with auto-restart"
+            )
+        )
         self.application.run_polling(allowed_updates=Update.ALL_TYPES)
+    
+    async def send_log_message(self, message: str):
+        """Send log message to the configured log channel"""
+        try:
+            await self.application.bot.send_message(
+                chat_id=self.log_channel_id,
+                text=message,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            logger.error(f"Failed to send log to channel: {e}")
+    
+    async def on_error(self, update: Optional[Update], context: ContextTypes.DEFAULT_TYPE):
+        """Handle errors and log them to the channel"""
+        error = context.error
+        
+        # Log the error
+        logger.error(f"An error occurred: {error}", exc_info=True)
+        
+        # Send error to log channel
+        error_msg = (
+            f"🔴 **Bot Error**\n\n"
+            f"**Error:** `{str(error)}`\n"
+            f"**Type:** `{type(error).__name__}`\n"
+        )
+        
+        if update and update.effective_chat:
+            error_msg += f"**Chat:** `{update.effective_chat.id}`\n"
+            error_msg += f"**Title:** {update.effective_chat.title}\n"
+        
+        if update and update.effective_user:
+            error_msg += f"**User:** `{update.effective_user.id}`\n"
+            error_msg += f"**Name:** {update.effective_user.first_name}\n"
+        
+        try:
+            await self.send_log_message(error_msg)
+        except Exception as e:
+            logger.error(f"Failed to send error to log channel: {e}")
 
 
 def main():
