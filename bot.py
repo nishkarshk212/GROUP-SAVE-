@@ -973,9 +973,6 @@ Add me to your group and make me an admin to automatically monitor new members!
         self.warned_users[chat_id][user.id] += 1
         warning_count = self.warned_users[chat_id][user.id]
         
-        # Send violation report with user ID and action buttons
-        await self.send_violation_report(chat, user, categories, severity, words, warning_count)
-        
         # Determine penalty type - use custom blocked words penalty if applicable
         penalty_type = settings['penalty_type']
         if 'blocked_word' in categories and chat_id in self.blocked_words_penalty:
@@ -984,7 +981,7 @@ Add me to your group and make me an admin to automatically monitor new members!
         # Apply penalty based on settings and warning count
         warning_limit = settings['warning_limit']
         
-        # Determine if penalty should be applied
+        # Determine if penalty should be applied IMMEDIATELY ⚡
         should_apply_penalty = False
         penalty_reason = ""
         
@@ -995,50 +992,52 @@ Add me to your group and make me an admin to automatically monitor new members!
             should_apply_penalty = True
             penalty_reason = f"warning limit reached ({warning_count}/{warning_limit})"
         
-        # Take action based on penalty type and reason
+        # ⚡ APPLY PENALTY FIRST (before sending messages) - INSTANT ACTION
+        penalty_applied = False
         if should_apply_penalty:
-            logger.info(f"Applying {penalty_type.upper()} penalty to user {user.id} - Reason: {penalty_reason}")
+            logger.info(f"⚡ Applying {penalty_type.upper()} penalty to user {user.id} - Reason: {penalty_reason}")
             
-            if penalty_type == 'ban':
-                try:
+            try:
+                if penalty_type == 'ban':
                     await chat.ban_member(user.id)
-                    logger.warning(f"Banned user {user.id} for violation in chat {chat_id}")
-                    # Send unban button after a short delay
-                    await asyncio.sleep(2)
-                    await self.send_action_buttons(chat, user, "ban")
-                except Exception as e:
-                    logger.error(f"Failed to ban user: {e}")
+                    logger.warning(f"✅ Banned user {user.id} for violation")
+                    penalty_applied = True
                     
-            elif penalty_type == 'kick':
-                try:
+                elif penalty_type == 'kick':
                     await chat.ban_member(user.id)
-                    await asyncio.sleep(60)  # Wait 1 minute before unbanning (kick effect)
+                    await asyncio.sleep(60)
                     await chat.unban_member(user.id)
-                    logger.warning(f"Kicked user {user.id} for violation in chat {chat_id}")
-                except Exception as e:
-                    logger.error(f"Failed to kick user: {e}")
+                    logger.warning(f"✅ Kicked user {user.id} for violation")
+                    penalty_applied = True
                     
-            elif penalty_type == 'mute':
-                try:
-                    # Restrict user from sending messages (mute for 1 hour)
+                elif penalty_type == 'mute':
                     await chat.restrict_member(
                         user_id=user.id,
                         can_send_messages=False,
                         can_send_polls=False,
                         can_send_other_messages=False,
                         can_add_web_page_previews=False,
-                        until_date=3600  # Mute for 1 hour
+                        until_date=3600
                     )
-                    logger.warning(f"Muted user {user.id} for violation in chat {chat_id}")
-                    # Send unmute button after a short delay
-                    await asyncio.sleep(2)
-                    await self.send_action_buttons(chat, user, "mute")
-                except Exception as e:
-                    logger.error(f"Failed to mute user: {e}")
+                    logger.warning(f"✅ Muted user {user.id} for violation")
+                    penalty_applied = True
                     
-            elif penalty_type == 'warn':
-                logger.info(f"Warned user {user.id} - no action taken (warn penalty selected)")
-                # For 'warn' type, just send warning message (already sent)
+                elif penalty_type == 'warn':
+                    logger.info(f"⚠️ Warned user {user.id}")
+                    penalty_applied = True
+                    
+            except Exception as e:
+                logger.error(f"❌ Failed to apply penalty: {e}")
+        
+        # 📢 Send violation report AFTER penalty is applied
+        await self.send_violation_report(chat, user, categories, severity, words, warning_count)
+        
+        # 🔘 Send action buttons NON-BLOCKING (no delay)
+        if penalty_applied:
+            try:
+                await self.send_action_buttons_fast(chat, user, penalty_type)
+            except Exception as e:
+                logger.error(f"Failed to send action buttons: {e}")
         
         elif severity == 'high':
             # Try to kick if bot has permission
@@ -1079,6 +1078,42 @@ Add me to your group and make me an admin to automatically monitor new members!
             await chat.send_message(message, reply_markup=reply_markup, parse_mode='Markdown')
         except BadRequest as e:
             logger.error(f"Failed to send action buttons: {e}")
+    
+    async def send_action_buttons_fast(self, chat: Chat, user: User, action_type: str):
+        """Send buttons WITHOUT blocking delays - INSTANT RESPONSE ⚡"""
+        keyboard = []
+        
+        if action_type == "ban":
+            keyboard.append([InlineKeyboardButton(
+                "✅ Unban User", 
+                callback_data=f"unban_{user.id}"
+            )])
+        elif action_type == "mute":
+            keyboard.append([InlineKeyboardButton(
+                "🔓 Unmute User", 
+                callback_data=f"unmute_{user.id}"
+            )])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        message = (
+            f"**⚡ Action Taken**
+
+"
+            f"User ID: `{user.id}`
+"
+            f"Action: {action_type.upper()}
+"
+            f"
+Admins can reverse this action using the button below."
+        )
+        
+        try:
+            # NO DELAY - Send immediately for fast response!
+            await chat.send_message(message, reply_markup=reply_markup, parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Failed to send action buttons: {e}")
+
     
     async def send_violation_report(self, chat: Chat, user: User, categories: List[str], 
                                     severity: str, words: List[str], is_admin: bool = False, warning_count: int = 0):
