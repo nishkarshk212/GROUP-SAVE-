@@ -1112,35 +1112,19 @@ Add me to your group and make me an admin to automatically monitor new members!
     
     async def send_violation_report(self, chat: Chat, user: User, categories: List[str], 
                                     severity: str, words: List[str], is_admin: bool = False, warning_count: int = 0):
-        """Send a violation report to the chat"""
-        emoji_map = {
-            'critical': '🔴',
-            'high': '🟠',
-            'medium': '🟡',
-            'low': '🟢'
-        }
+        """Send SIMPLE violation report - disappears immediately ⚡"""
         
-        emoji = emoji_map.get(severity, '⚪')
-        
-        # Show only user ID (no name) and DON'T show detected words
+        # Simple message showing ONLY user ID and warning count
         report = (
-            f"{emoji} **NSFW Content Detected!**\n\n"
+            f"⚠️ **Warning**\n\n"
             f"**User ID:** `{user.id}`\n"
-            f"**Severity:** {severity.upper()}\n"
-            f"**Warning Count:** {warning_count}\n"
-            f"**Categories:** {', '.join(categories)}\n"
-            f"\n⚠️ Inappropriate content detected. Please review group guidelines."
+            f"**Warnings:** {warning_count}"
         )
-        
-        if is_admin:
-            report += "\nℹ️ This is an administrator."
-        else:
-            report += "\n⚠️ Appropriate action will be taken."
         
         try:
             sent_message = await chat.send_message(report, parse_mode='Markdown')
-            # Auto-delete warning after 30 seconds
-            await asyncio.sleep(30)
+            # Delete immediately (no wait)
+            await asyncio.sleep(0.5)  # Very short delay to ensure message sends
             await sent_message.delete()
         except BadRequest as e:
             logger.error(f"Failed to send/delete violation report: {e}")
