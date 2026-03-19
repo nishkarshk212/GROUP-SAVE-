@@ -369,6 +369,10 @@ class TelegramNSFWBot:
                 InlineKeyboardButton(
                     "🅷🅴🅻🅿 🅰🅽🅳 🅲🅾🅼🅼🅰🅽🅳",
                     callback_data="show_help"
+                ),
+                InlineKeyboardButton(
+                    "🆄🅿🅳🅰🆃🅴🆂",
+                    url="https://t.me/Tele_212_bots"
                 )
             ]
         ]
