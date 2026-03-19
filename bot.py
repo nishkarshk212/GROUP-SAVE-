@@ -1097,15 +1097,10 @@ Add me to your group and make me an admin to automatically monitor new members!
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         message = (
-            f"**⚡ Action Taken**
-
-"
-            f"User ID: `{user.id}`
-"
-            f"Action: {action_type.upper()}
-"
-            f"
-Admins can reverse this action using the button below."
+            f"**⚡ Action Taken**\\n\\n"
+            f"User ID: `{user.id}`\\n"
+            f"Action: {action_type.upper()}\\n"
+            f"\\nAdmins can reverse this action using the button below."
         )
         
         try:
