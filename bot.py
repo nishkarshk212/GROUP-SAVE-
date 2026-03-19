@@ -980,8 +980,21 @@ Add me to your group and make me an admin to automatically monitor new members!
         # Apply penalty based on settings and warning count
         warning_limit = settings['warning_limit']
         
-        # Take action based on severity and warning count
-        if severity == 'critical' or warning_count >= warning_limit:
+        # Determine if penalty should be applied
+        should_apply_penalty = False
+        penalty_reason = ""
+        
+        if severity == 'critical':
+            should_apply_penalty = True
+            penalty_reason = "critical severity"
+        elif warning_count >= warning_limit:
+            should_apply_penalty = True
+            penalty_reason = f"warning limit reached ({warning_count}/{warning_limit})"
+        
+        # Take action based on penalty type and reason
+        if should_apply_penalty:
+            logger.info(f"Applying {penalty_type.upper()} penalty to user {user.id} - Reason: {penalty_reason}")
+            
             if penalty_type == 'ban':
                 try:
                     await chat.ban_member(user.id)
@@ -991,6 +1004,7 @@ Add me to your group and make me an admin to automatically monitor new members!
                     await self.send_action_buttons(chat, user, "ban")
                 except Exception as e:
                     logger.error(f"Failed to ban user: {e}")
+                    
             elif penalty_type == 'kick':
                 try:
                     await chat.ban_member(user.id)
@@ -999,12 +1013,16 @@ Add me to your group and make me an admin to automatically monitor new members!
                     logger.warning(f"Kicked user {user.id} for violation in chat {chat_id}")
                 except Exception as e:
                     logger.error(f"Failed to kick user: {e}")
+                    
             elif penalty_type == 'mute':
                 try:
                     # Restrict user from sending messages (mute for 1 hour)
                     await chat.restrict_member(
                         user_id=user.id,
                         can_send_messages=False,
+                        can_send_polls=False,
+                        can_send_other_messages=False,
+                        can_add_web_page_previews=False,
                         until_date=3600  # Mute for 1 hour
                     )
                     logger.warning(f"Muted user {user.id} for violation in chat {chat_id}")
@@ -1013,7 +1031,10 @@ Add me to your group and make me an admin to automatically monitor new members!
                     await self.send_action_buttons(chat, user, "mute")
                 except Exception as e:
                     logger.error(f"Failed to mute user: {e}")
-            # For 'warn' type, just send warning message
+                    
+            elif penalty_type == 'warn':
+                logger.info(f"Warned user {user.id} - no action taken (warn penalty selected)")
+                # For 'warn' type, just send warning message (already sent)
         
         elif severity == 'high':
             # Try to kick if bot has permission
