@@ -1029,8 +1029,6 @@ Add me to your group and make me an admin to automatically monitor new members!
             except Exception as e:
                 logger.error(f"❌ Failed to apply penalty: {e}")
         
-        # 📢 Send violation report AFTER penalty is applied
-        await self.send_violation_report(chat, user, categories, severity, words, warning_count)
         
         # 🔘 Send action buttons NON-BLOCKING (no delay)
         if penalty_applied:
@@ -1110,24 +1108,6 @@ Add me to your group and make me an admin to automatically monitor new members!
             logger.error(f"Failed to send action buttons: {e}")
 
     
-    async def send_violation_report(self, chat: Chat, user: User, categories: List[str], 
-                                    severity: str, words: List[str], is_admin: bool = False, warning_count: int = 0):
-        """Send SIMPLE violation report - disappears immediately ⚡"""
-        
-        # Simple message showing ONLY user ID and warning count
-        report = (
-            f"⚠️ **Warning**\n\n"
-            f"**User ID:** `{user.id}`\n"
-            f"**Warnings:** {warning_count}"
-        )
-        
-        try:
-            sent_message = await chat.send_message(report, parse_mode='Markdown')
-            # Delete immediately (no wait)
-            await asyncio.sleep(0.5)  # Very short delay to ensure message sends
-            await sent_message.delete()
-        except BadRequest as e:
-            logger.error(f"Failed to send/delete violation report: {e}")
     
     async def check_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Check message content for NSFW words"""
