@@ -1021,6 +1021,9 @@ Add me to your group and make me an admin to automatically monitor new members!
                 logger.error(f"❌ Failed to apply penalty: {e}")
         
         
+        # 📢 Send warning message (deletes in 1 second)
+        await self.send_violation_report(chat, user, categories, severity, words, warning_count=warning_count)
+        
         # 🔘 Send action buttons NON-BLOCKING (no delay)
         if penalty_applied:
             try:
@@ -1100,7 +1103,27 @@ Add me to your group and make me an admin to automatically monitor new members!
 
     
     
-    async def check_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    async def send_violation_report(self, chat: Chat, user: User, categories: List[str], 
+                                    severity: str, words: List[str], is_admin: bool = False, warning_count: int = 0):
+        """Send SIMPLE warning - deletes in 1 second ⚡"""
+        
+        # Simple message showing ONLY user ID
+        report = (
+            f"⚠️ **Warning**\n\n"
+            f"**User ID:** `{user.id}`\n"
+            f"**Warnings:** {warning_count}"
+        )
+        
+        try:
+            sent_message = await chat.send_message(report, parse_mode='Markdown')
+            # Delete after 1 second
+            await asyncio.sleep(1)
+            await sent_message.delete()
+        except BadRequest as e:
+            logger.error(f"Failed to send/delete warning: {e}")
+
+\n    async def check_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Check message content for NSFW words"""
         if not update.effective_chat or update.effective_chat.type == 'private':
             return
