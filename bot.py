@@ -1123,7 +1123,8 @@ Add me to your group and make me an admin to automatically monitor new members!
         except BadRequest as e:
             logger.error(f"Failed to send/delete warning: {e}")
 
-\n    async def check_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    async def check_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Check message content for NSFW words"""
         if not update.effective_chat or update.effective_chat.type == 'private':
             return
