@@ -662,14 +662,7 @@ Add me to your group and make me an admin to automatically monitor new members!
                 )
                 if is_violation:
                     violations_found += 1
-                    await self.send_violation_report(
-                        update.effective_chat,
-                        admin.user,
-                        categories,
-                        severity,
-                        words,
-                        is_admin=True
-                    )
+
             
             # Note: Full member scan requires proper pagination
             # This is a simplified version checking admins first
@@ -889,10 +882,8 @@ Add me to your group and make me an admin to automatically monitor new members!
         is_violation, categories, severity, words = await self.check_member_profile(user, chat.id)
         
         if is_violation:
-            if message:
-                await self.send_violation_report(chat, user, categories, severity, words)
-            else:
-                await self.handle_violation(chat, user, categories, severity, words)
+            # Always handle violation (no messages shown)
+            await self.handle_violation(chat, user, categories, severity, words)
     
     async def should_monitor_user(self, user: User, chat_id: int) -> bool:
         """Check if user should be monitored based on their status and settings"""
